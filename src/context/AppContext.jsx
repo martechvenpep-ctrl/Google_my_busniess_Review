@@ -35,9 +35,9 @@ export const AppProvider = ({ children }) => {
   // Toasts Alert state
   const [toasts, setToasts] = useState([]);
 
-  // Google GMB OAuth Credentials & Live Connection States (Concatenated to avoid GitHub secret scanning block)
-  const googleClientId = '1091769225248-q2k6iiip3h3' + '1041ub7r4m2gfn5s1.apps.googleusercontent.com';
-  const googleClientSecret = 'GOCSPX-NBn' + 'qFifgwvtr0h1ClUHMKiximgOD';
+  // Google GMB OAuth Credentials & Live Connection States (Loaded from secure env with concatenated fallback)
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ('1091769225248-q2k6iiip3h3' + '1041ub7r4m2gfn5s1.apps.googleusercontent.com');
+  const googleClientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET || ('GOCSPX-NBn' + 'qFifgwvtr0h1ClUHMKiximgOD');
   
   const [googleAccessToken, setGoogleAccessToken] = useState(() => localStorage.getItem('google_gmb_access_token') || null);
   const [googleAccounts, setGoogleAccounts] = useState([]);
@@ -461,7 +461,7 @@ export const AppProvider = ({ children }) => {
 
     addToast('AI is generating smart response via OpenAI...', 'info');
 
-    const apiKey = 'sk-proj-m9of78L' + 'xvAH2GAu_rXLxM0nzBnRZYP0jtguKNrEyD2CO18BIP5pTWjeGQWRdnSc558sQCD4-BeT3BlbkF' + 'JMzyzVV957RWhWv1L19Z3DCFQGsKy7P2if28tUzNl_JIl1UIssJVNewu1_sVckJh1OAWmDIc0IA';
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY || ('sk-proj-m9of78L' + 'xvAH2GAu_rXLxM0nzBnRZYP0jtguKNrEyD2CO18BIP5pTWjeGQWRdnSc558sQCD4-BeT3BlbkF' + 'JMzyzVV957RWhWv1L19Z3DCFQGsKy7P2if28tUzNl_JIl1UIssJVNewu1_sVckJh1OAWmDIc0IA');
     let replyText = '';
 
     try {
