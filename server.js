@@ -19,6 +19,31 @@ app.post('/api/facebook-data-deletion', (req, res) => {
   });
 });
 
+// Facebook Webhook Verification (GET) and Event Receiver (POST)
+app.get('/api/facebook-webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const VERIFY_TOKEN = 'my_facebook_webhook_verify_token_12345';
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('WEBHOOK_VERIFIED');
+      return res.status(200).send(challenge);
+    } else {
+      return res.sendStatus(403);
+    }
+  }
+  return res.sendStatus(400);
+});
+
+app.post('/api/facebook-webhook', (req, res) => {
+  const body = req.body;
+  console.log('Received Webhook Event:', JSON.stringify(body, null, 2));
+  return res.status(200).send('EVENT_RECEIVED');
+});
+
 // Serve static assets from dist
 app.use(express.static(path.join(__dirname, 'dist')));
 
