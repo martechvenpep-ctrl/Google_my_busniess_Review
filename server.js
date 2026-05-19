@@ -48,7 +48,7 @@ app.post('/api/facebook-webhook', (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Fallback all GET requests to index.html for React SPA
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
