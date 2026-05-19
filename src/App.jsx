@@ -26,7 +26,7 @@ function AppContent() {
 
   // Check static page routes
   const path = window.location.pathname;
-  if (path === '/data-deletion.html' || path === '/data-deletion') {
+  if (path === '/data-deletion.html' || path === '/data-deletion' || path === '/facebook-data-deletion') {
     return <DataDeletion />;
   }
 
