@@ -17,11 +17,18 @@ import AdminPanel from './pages/AdminPanel';
 import APIDocs from './pages/APIDocs';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import DataDeletion from './pages/DataDeletion';
 
 import './index.css';
 
 function AppContent() {
   const { activePage, toasts } = useContext(AppContext);
+
+  // Check static page routes
+  const path = window.location.pathname;
+  if (path === '/data-deletion.html' || path === '/data-deletion') {
+    return <DataDeletion />;
+  }
 
   // Auth pages render directly (no sidebar layout)
   if (activePage === 'login') {
