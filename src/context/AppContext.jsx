@@ -254,12 +254,10 @@ export const AppProvider = ({ children }) => {
   }, []);
 
 
-  // Fetch Facebook Pages via Graph API
+  // Fetch Facebook Pages securely via backend proxy to prevent CORS issues
   const fetchFacebookPages = async (token) => {
     try {
-      const response = await fetch('https://graph.facebook.com/v25.0/me/accounts', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await fetch(`/api/facebook/pages?accessToken=${token}`);
       if (response.ok) {
         const data = await response.json();
         if (data.data) {
@@ -268,13 +266,13 @@ export const AppProvider = ({ children }) => {
           return;
         }
       }
-      throw new Error('Graph API unauthorized');
+      throw new Error('Graph API returned empty or error');
     } catch (err) {
-      console.warn('Real Facebook Pages retrieval failed. Running sandbox fallback.');
-      setFacebookPages(facebookPagesMock);
-      logAction('Facebook Pages Synced', 'Developer Console (Sandbox)', 'Fetched mock Pages linked to Meta Developer App.');
+      console.warn('Real Facebook Pages retrieval failed. Clearing list to avoid dummy data.', err);
+      setFacebookPages([]); // Ensure no mock pages are loaded in Live connected state!
     }
   };
+
 
   const mapFbReviewToInternal = (fbRev, pageId, pageName) => {
     const rating = fbRev.recommendation_type === 'positive' ? 5 : 2;
@@ -318,14 +316,14 @@ export const AppProvider = ({ children }) => {
       syncedPagesAsLocations.push({
         id: pageId,
         name: pageTitle,
-        address: `Facebook Page Category: ${targetPage.category}`,
+        address: `Facebook Page Category: ${targetPage.category || 'Software'}`,
         rating: 4.8,
-        totalReviews: 4,
+        totalReviews: 0,
         status: 'CONNECTED'
       });
 
       try {
-        const url = `https://graph.facebook.com/v25.0/${pageId}/ratings?fields=review_text,recommendation_type,created_time,reviewer,open_graph_story&access_token=${targetPage.access_token}`;
+        const url = `/api/facebook/ratings?pageId=${pageId}&accessToken=${targetPage.access_token}`;
         const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
@@ -336,39 +334,39 @@ export const AppProvider = ({ children }) => {
         }
         throw new Error('Facebook ratings query failed');
       } catch (err) {
-        console.warn(`Real Facebook ratings lookup failed for page ${pageId}. Running sandbox fallback.`);
-        const customMockReviews = facebookReviewsMock.map(rev => ({
-          ...rev,
-          reviewId: `fb-rev-${pageId}-${rev.reviewId}`
-        }));
-        allFetchedReviews.push(...customMockReviews.map(rev => mapFbReviewToInternal(rev, pageId, pageTitle)));
+        console.warn(`Real Facebook ratings lookup failed for page ${pageId}. Clearing lists to avoid dummy data.`, err);
+        // Do NOT populate customMockReviews for real/live connections!
       }
     }
 
-    if (allFetchedReviews.length > 0) {
-      const analyzed = allFetchedReviews.map(rev => {
-        const analysis = analyzeReviewText(rev.comment, rev.rating);
-        return { ...rev, ...analysis };
-      });
+    const analyzed = allFetchedReviews.map(rev => {
+      const analysis = analyzeReviewText(rev.comment, rev.rating);
+      return { ...rev, ...analysis };
+    });
 
-      setReviews(prev => {
-        const nonFb = prev.filter(r => r.source !== 'Facebook Page');
-        return [...analyzed, ...nonFb];
-      });
+    setReviews(prev => {
+      const nonFb = prev.filter(r => r.source !== 'Facebook Page');
+      return [...analyzed, ...nonFb];
+    });
 
-      setLocations(prev => {
-        const nonFbLocs = prev.filter(l => !l.address.includes('Facebook Page'));
-        return [...syncedPagesAsLocations, ...nonFbLocs];
-      });
+    setLocations(prev => {
+      const nonFbLocs = prev.filter(l => !l.address.includes('Facebook Page'));
+      return [...syncedPagesAsLocations, ...nonFbLocs];
+    });
 
-      if (analyzed.length > 0) {
-        setSelectedReview(analyzed[0]);
-      }
-      addToast(`Facebook sync complete! Synced ${analyzed.length} ratings.`, 'success');
+    if (analyzed.length > 0) {
+      setSelectedReview(analyzed[0]);
+      addToast(`Facebook sync complete! Synced ${analyzed.length} live ratings.`, 'success');
       logAction('Facebook Sync Completed', 'System Engine', `Synced reviews database for ${selectedPageIds.length} Facebook Pages.`);
+    } else {
+      setSelectedReview(null);
+      addToast(`Facebook sync complete! No ratings found for these connected pages yet.`, 'info');
+      logAction('Facebook Sync Empty', 'System Engine', `Sync returned 0 ratings for ${selectedPageIds.length} Facebook Pages.`);
     }
+    
     setIsSyncing(false);
   };
+
 
   const disconnectFacebookProfile = () => {
     localStorage.removeItem('facebook_access_token');

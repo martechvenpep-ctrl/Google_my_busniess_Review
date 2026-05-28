@@ -110,6 +110,108 @@ app.get('/api/facebook/callback', async (req, res) => {
   }
 });
 
+// Fetch connected Facebook Pages securely via backend proxy (avoids browser CORS issues)
+app.get('/api/facebook/pages', async (req, res) => {
+  const { accessToken } = req.query;
+  if (!accessToken) {
+    return res.status(400).json({ error: 'Missing accessToken' });
+  }
+
+  // Sandbox fallback if using mock sandbox token
+  if (accessToken.includes('SANDBOX_TOKEN')) {
+    console.log('[Meta Graph API] Loading sandbox pages mock dataset.');
+    // Return standard mock pages for previewing
+    return res.json({
+      data: [
+        { id: '694955550368673', name: 'SAAS GAMA', access_token: accessToken, category: 'Software' },
+        { id: '825801386910318', name: 'Venpep Digital Solutions', access_token: accessToken, category: 'Marketing Agency' },
+        { id: '951048627103818', name: 'AI ReviewPilot Support Page', access_token: accessToken, category: 'Consulting Agency' }
+      ]
+    });
+  }
+
+  try {
+    const url = `https://graph.facebook.com/v25.0/me/accounts?access_token=${accessToken}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    const errText = await response.text();
+    return res.status(response.status).json({ error: 'Graph API error', details: errText });
+  } catch (err) {
+    return res.status(500).json({ error: 'Internal server error fetching pages' });
+  }
+});
+
+// Fetch Facebook Page Ratings/Reviews securely via backend proxy (avoids browser CORS issues)
+app.get('/api/facebook/ratings', async (req, res) => {
+  const { pageId, accessToken } = req.query;
+  if (!pageId || !accessToken) {
+    return res.status(400).json({ error: 'Missing pageId or accessToken' });
+  }
+
+  // Sandbox fallback if using mock sandbox token
+  if (accessToken.includes('SANDBOX_TOKEN')) {
+    console.log('[Meta Graph API] Loading sandbox ratings mock dataset.');
+    // Returns mock reviews for previewing
+    return res.json({
+      data: [
+        {
+          reviewId: "fb-rev-101",
+          reviewer: { displayName: "John Doe", profilePhotoUrl: null },
+          recommendation_type: "positive",
+          review_text: "Absolutely love the review automation features! It makes managing customer relations a breeze.",
+          created_time: new Date(Date.now() - 3600000 * 2).toISOString(),
+          reply_message: "",
+          synced_at: ""
+        },
+        {
+          reviewId: "fb-rev-102",
+          reviewer: { displayName: "Sarah Jenkins", profilePhotoUrl: null },
+          recommendation_type: "negative",
+          review_text: "I experienced a login issue where the oauth token expired, and it took a long time to reconnect. Need better handling.",
+          created_time: new Date(Date.now() - 3600000 * 6).toISOString(),
+          reply_message: "",
+          synced_at: ""
+        },
+        {
+          reviewId: "fb-rev-103",
+          reviewer: { displayName: "Michael Chang", profilePhotoUrl: null },
+          recommendation_type: "positive",
+          review_text: "Great dashboard support and analytics widgets. Very premium UI aesthetics!",
+          created_time: new Date(Date.now() - 86400000).toISOString(),
+          reply_message: "Thank you for your feedback! We are thrilled that you like the UI.",
+          synced_at: new Date(Date.now() - 86000000).toISOString()
+        },
+        {
+          reviewId: "fb-rev-104",
+          reviewer: { displayName: "Emily Watson", profilePhotoUrl: null },
+          recommendation_type: "positive",
+          review_text: "AI reply helper is highly professional. Deducts hours of copy-pasting for my team daily.",
+          created_time: new Date(Date.now() - 172800000).toISOString(),
+          reply_message: "",
+          synced_at: ""
+        }
+      ]
+    });
+  }
+
+  try {
+    const url = `https://graph.facebook.com/v25.0/${pageId}/ratings?fields=review_text,recommendation_type,created_time,reviewer,open_graph_story&access_token=${accessToken}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    const errText = await response.text();
+    return res.status(response.status).json({ error: 'Graph API error', details: errText });
+  } catch (err) {
+    return res.status(500).json({ error: 'Internal server error fetching ratings' });
+  }
+});
+
+
 
 // Facebook Webhook Verification (GET) and Event Receiver (POST)
 app.get('/api/facebook-webhook', (req, res) => {
