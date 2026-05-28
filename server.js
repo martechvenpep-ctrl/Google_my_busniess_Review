@@ -19,6 +19,30 @@ app.post('/api/facebook-data-deletion', (req, res) => {
   });
 });
 
+// Exchange Facebook Authorization Code for Access Token securely
+app.post('/api/facebook-token', async (req, res) => {
+  const { code, redirectUri } = req.body;
+  const appId = '825801386910318';
+  const appSecret = process.env.FACEBOOK_CLIENT_SECRET;
+
+  if (!appSecret) {
+    return res.status(400).json({ error: 'FACEBOOK_CLIENT_SECRET environment variable is not configured.' });
+  }
+
+  try {
+    const url = `https://graph.facebook.com/v25.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+    const errText = await response.text();
+    return res.status(response.status).json({ error: 'Graph API error', details: errText });
+  } catch (err) {
+    return res.status(500).json({ error: 'Internal server error during exchange' });
+  }
+});
+
 // Facebook Webhook Verification (GET) and Event Receiver (POST)
 app.get('/api/facebook-webhook', (req, res) => {
   const mode = req.query['hub.mode'];
