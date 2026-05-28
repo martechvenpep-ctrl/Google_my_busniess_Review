@@ -107,12 +107,70 @@ export const AppProvider = ({ children }) => {
     window.location.href = oauthUrl;
   };
 
-  // Initiate Facebook OAuth Redirect Flow
+  // Load and initialize the Facebook JS SDK dynamically
+  useEffect(() => {
+    window.fbAsyncInit = function() {
+      if (window.FB) {
+        window.FB.init({
+          appId            : facebookAppId,
+          cookie           : true,
+          xfbml            : true,
+          version          : 'v25.0'
+        });
+        console.log('Facebook JS SDK initialized successfully.');
+      }
+    };
+
+    // Load SDK script asynchronously
+    const loadFbSdk = () => {
+      if (document.getElementById('facebook-jssdk')) return;
+      const fjs = document.getElementsByTagName('script')[0];
+      const js = document.createElement('script');
+      js.id = 'facebook-jssdk';
+      js.src = "https://connect.facebook.net/en_US/sdk.js";
+      if (fjs && fjs.parentNode) {
+        fjs.parentNode.insertBefore(js, fjs);
+      } else {
+        document.head.appendChild(js);
+      }
+    };
+    loadFbSdk();
+  }, []);
+
+  // Initiate Facebook OAuth Flow using official SDK to support Business Config IDs
   const initiateFacebookOAuth = () => {
-    addToast('Redirecting to Meta Business Onboarding...', 'info');
-    const redirectUri = window.location.origin + '/';
-    const oauthUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${facebookAppId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile&config_id=${facebookConfigId}&state=facebook`;
-    window.location.href = oauthUrl;
+    if (window.FB) {
+      addToast('Opening Meta Business Onboarding...', 'info');
+      window.FB.login((response) => {
+        console.log('Facebook SDK Login Response:', response);
+        if (response.authResponse) {
+          const token = response.authResponse.accessToken;
+          setFacebookAccessToken(token);
+          localStorage.setItem('facebook_access_token', token);
+          
+          setIntegrations(prev => prev.map(integration => 
+            integration.id === 'facebook' ? { ...integration, status: 'CONNECTED' } : integration
+          ));
+          
+          addToast('Successfully authenticated Facebook Business Account!', 'success');
+          logAction('Facebook OAuth Connected', 'Meta Console', 'Acquired user access token for Facebook Graph API.');
+          
+          fetchFacebookPages(token);
+        } else {
+          addToast('Facebook onboarding was cancelled or failed.', 'error');
+          logAction('Facebook OAuth Cancelled', 'Meta Console', 'User closed the login window or denied authorization.');
+        }
+      }, {
+        scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile',
+        config_id: facebookConfigId
+      });
+    } else {
+      // Fallback redirect OAuth if JS SDK is blocked by browser extensions or Brave Shields
+      addToast('Redirecting to Meta Business Onboarding (Fallback)...', 'info');
+      const redirectUri = window.location.origin + '/';
+      const oauthUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${facebookAppId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile&config_id=${facebookConfigId}&state=facebook`;
+      window.location.href = oauthUrl;
+    }
   };
 
   // Parse GMB or Facebook Access Token from hash URL after redirection
