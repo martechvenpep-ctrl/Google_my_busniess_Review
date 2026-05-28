@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
@@ -46,7 +47,7 @@ app.post('/api/facebook-token', async (req, res) => {
 // Secure Backend Route to initiate Meta Login using response_type=code
 app.get('/api/facebook/login', (req, res) => {
   const host = req.get('host');
-  const protocol = req.protocol;
+  const protocol = host.includes('localhost') ? req.protocol : 'https';
   const redirectUri = `${protocol}://${host}/api/facebook/callback`;
   const appId = '825801386910318';
   const configId = '966098999669245';
@@ -61,7 +62,7 @@ app.get('/api/facebook/login', (req, res) => {
 app.get('/api/facebook/callback', async (req, res) => {
   const code = req.query.code;
   const host = req.get('host');
-  const protocol = req.protocol;
+  const protocol = host.includes('localhost') ? req.protocol : 'https';
   const redirectUri = `${protocol}://${host}/api/facebook/callback`;
   const appId = '825801386910318';
   const appSecret = process.env.FACEBOOK_CLIENT_SECRET;
