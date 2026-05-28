@@ -43,6 +43,73 @@ app.post('/api/facebook-token', async (req, res) => {
   }
 });
 
+// Secure Backend Route to initiate Meta Login using response_type=code
+app.get('/api/facebook/login', (req, res) => {
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const redirectUri = `${protocol}://${host}/api/facebook/callback`;
+  const appId = '825801386910318';
+  const configId = '966098999669245';
+  
+  const loginUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile&config_id=${configId}&response_type=code&state=facebook`;
+  
+  console.log('[Meta OAuth] Redirecting to:', loginUrl);
+  res.redirect(loginUrl);
+});
+
+// Secure Backend Callback Route to handle temporary OAuth authorization code
+app.get('/api/facebook/callback', async (req, res) => {
+  const code = req.query.code;
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const redirectUri = `${protocol}://${host}/api/facebook/callback`;
+  const appId = '825801386910318';
+  const appSecret = process.env.FACEBOOK_CLIENT_SECRET;
+
+  if (!code) {
+    console.warn('[Meta OAuth] Authorization code is missing.');
+    return res.redirect('/#error=missing_code');
+  }
+
+  // Sandbox fallback flow if App Secret is not configured in environment variables
+  if (!appSecret) {
+    console.warn('[Meta OAuth] FACEBOOK_CLIENT_SECRET environment variable is missing. Activating Sandbox flow.');
+    const sandboxToken = 'EAAO825801386910318_SANDBOX_TOKEN_12345';
+    return res.redirect(`/#access_token=${sandboxToken}&state=facebook`);
+  }
+
+  try {
+    const tokenUrl = `https://graph.facebook.com/v25.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
+    const tokenResponse = await fetch(tokenUrl);
+    if (tokenResponse.ok) {
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.access_token;
+      
+      // Query Meta's Graph API to fetch pages securely in the backend
+      try {
+        const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?access_token=${accessToken}`;
+        const pagesResponse = await fetch(pagesUrl);
+        if (pagesResponse.ok) {
+          const pagesData = await pagesResponse.json();
+          console.log(`[Meta OAuth] Successfully connected and retrieved ${pagesData.data?.length || 0} pages securely.`);
+        }
+      } catch (pagesErr) {
+        console.error('[Meta OAuth] Error fetching connected pages inside callback:', pagesErr);
+      }
+
+      return res.redirect(`/#access_token=${accessToken}&state=facebook`);
+    } else {
+      const errText = await tokenResponse.text();
+      console.error('[Meta OAuth] Code exchange failed:', errText);
+      return res.redirect('/#error=exchange_failed');
+    }
+  } catch (err) {
+    console.error('[Meta OAuth] Internal error during callback exchange:', err);
+    return res.redirect('/#error=server_error');
+  }
+});
+
+
 // Facebook Webhook Verification (GET) and Event Receiver (POST)
 app.get('/api/facebook-webhook', (req, res) => {
   const mode = req.query['hub.mode'];

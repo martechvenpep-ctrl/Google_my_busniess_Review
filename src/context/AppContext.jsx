@@ -137,41 +137,12 @@ export const AppProvider = ({ children }) => {
     loadFbSdk();
   }, []);
 
-  // Initiate Facebook OAuth Flow using official SDK to support Business Config IDs
+  // Initiate Facebook OAuth Flow by redirecting to our secure backend OAuth gateway
   const initiateFacebookOAuth = () => {
-    if (window.FB) {
-      addToast('Opening Meta Business Onboarding...', 'info');
-      window.FB.login((response) => {
-        console.log('Facebook SDK Login Response:', response);
-        if (response.authResponse) {
-          const token = response.authResponse.accessToken;
-          setFacebookAccessToken(token);
-          localStorage.setItem('facebook_access_token', token);
-          
-          setIntegrations(prev => prev.map(integration => 
-            integration.id === 'facebook' ? { ...integration, status: 'CONNECTED' } : integration
-          ));
-          
-          addToast('Successfully authenticated Facebook Business Account!', 'success');
-          logAction('Facebook OAuth Connected', 'Meta Console', 'Acquired user access token for Facebook Graph API.');
-          
-          fetchFacebookPages(token);
-        } else {
-          addToast('Facebook onboarding was cancelled or failed.', 'error');
-          logAction('Facebook OAuth Cancelled', 'Meta Console', 'User closed the login window or denied authorization.');
-        }
-      }, {
-        scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile',
-        config_id: facebookConfigId
-      });
-    } else {
-      // Fallback redirect OAuth using response_type=code if JS SDK is blocked by browser extensions or Brave Shields
-      addToast('Redirecting to Meta Business Onboarding (Fallback)...', 'info');
-      const redirectUri = window.location.origin + '/';
-      const oauthUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${facebookAppId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile&config_id=${facebookConfigId}&state=facebook`;
-      window.location.href = oauthUrl;
-    }
+    addToast('Redirecting to secure Meta login...', 'info');
+    window.location.href = '/api/facebook/login';
   };
+
 
   // Helper to exchange Facebook authorization code for token securely (with sandbox fallback)
   const exchangeFacebookCode = async (code) => {
