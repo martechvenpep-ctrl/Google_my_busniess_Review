@@ -51,7 +51,10 @@ export default function ReviewsInbox() {
     googleLocations,
     googleSelectedAccount,
     fetchGmbLocations,
-    syncSelectedGbpLocations
+    syncSelectedGbpLocations,
+    // Facebook OAuth integration state
+    facebookPages,
+    syncSelectedFacebookPages
   } = useContext(AppContext);
 
   // Draft overrides states
@@ -67,7 +70,12 @@ export default function ReviewsInbox() {
   const [selectedGbpLocations, setSelectedGbpLocations] = useState([]);
   const [isGmbSyncing, setIsGmbSyncing] = useState(false);
 
+  // Facebook state hooks for inbox sync
+  const [selectedFbPages, setSelectedFbPages] = useState([]);
+  const [isFbSyncing, setIsFbSyncing] = useState(false);
+
   const isGoogleConnected = integrations.find(i => i.id === 'google')?.status === 'CONNECTED';
+  const isFacebookConnected = integrations.find(i => i.id === 'facebook')?.status === 'CONNECTED';
 
   // Automatically check the first location if locations are loaded
   React.useEffect(() => {
@@ -80,6 +88,13 @@ export default function ReviewsInbox() {
       }
     }
   }, [googleLocations]);
+
+  // Automatically check the first Facebook page if loaded
+  React.useEffect(() => {
+    if (facebookPages.length > 0 && selectedFbPages.length === 0) {
+      setSelectedFbPages([facebookPages[0]?.id]);
+    }
+  }, [facebookPages]);
 
   const handleGmbAccountChange = async (accountId) => {
     if (!accountId) return;
@@ -98,6 +113,20 @@ export default function ReviewsInbox() {
     setIsGmbSyncing(true);
     await syncSelectedGbpLocations(selectedGbpLocations);
     setIsGmbSyncing(false);
+  };
+
+  const handleToggleFbPage = (id) => {
+    if (selectedFbPages.includes(id)) {
+      setSelectedFbPages(selectedFbPages.filter(p => p !== id));
+    } else {
+      setSelectedFbPages([...selectedFbPages, id]);
+    }
+  };
+
+  const handleFbSyncClick = async () => {
+    setIsFbSyncing(true);
+    await syncSelectedFacebookPages(selectedFbPages);
+    setIsFbSyncing(false);
   };
 
   // Handle setting a selected review and copying its active reply to the draft editor
@@ -222,6 +251,68 @@ export default function ReviewsInbox() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* FACEBOOK SYNC CONSOLE */}
+          {isFacebookConnected && (
+            <div className="sidebar-gmb-control-card" style={{ borderLeft: '4px solid #1877f2', marginTop: '12px' }}>
+              <div className="sidebar-gmb-header">
+                <span className="gmb-g-icon-small" style={{ backgroundColor: '#1877f2', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>F</span>
+                <h3>Facebook Pages</h3>
+              </div>
+              
+              <div className="sidebar-gmb-sync-panel animate-fade-in" style={{ marginTop: '10px' }}>
+                <label className="sidebar-gmb-sublabel">Select Pages to Sync:</label>
+                
+                {facebookPages.length > 0 ? (
+                  <div className="sidebar-gmb-checkboxes-list">
+                    {facebookPages.map(page => {
+                      const isChecked = selectedFbPages.includes(page.id);
+                      return (
+                        <div 
+                          key={page.id}
+                          className={`sidebar-loc-checkbox-row ${isChecked ? 'active' : ''}`}
+                          onClick={() => handleToggleFbPage(page.id)}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={() => {}} // Row click handles state
+                          />
+                          <span className="sidebar-loc-title-text" title={page.name}>
+                            {page.name} ({page.category})
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="sidebar-gmb-loading-box">
+                    <RefreshCw size={12} className="spinner" />
+                    <span>Loading pages...</span>
+                  </div>
+                )}
+
+                <button 
+                  className="sidebar-gmb-sync-btn"
+                  onClick={handleFbSyncClick}
+                  disabled={selectedFbPages.length === 0 || isFbSyncing}
+                  style={{ backgroundColor: '#1877f2' }}
+                >
+                  {isFbSyncing ? (
+                    <>
+                      <RefreshCw size={12} className="spinner" />
+                      <span>Syncing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={12} />
+                      <span>Sync Facebook Reviews</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
           

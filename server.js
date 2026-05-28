@@ -41,6 +41,29 @@ app.get('/api/facebook-webhook', (req, res) => {
 app.post('/api/facebook-webhook', (req, res) => {
   const body = req.body;
   console.log('Received Webhook Event:', JSON.stringify(body, null, 2));
+
+  // Process Facebook Page Webhook payload (subscription to the 'ratings' field)
+  if (body.object === 'page') {
+    body.entry?.forEach(entry => {
+      const pageId = entry.id;
+      entry.changes?.forEach((change) => {
+        if (change.field === 'ratings') {
+          const ratingEvent = change.value;
+          console.log(`[Meta Webhook] New page rating received for page ${pageId}:`, {
+            reviewer: ratingEvent.reviewer_name || 'Facebook User',
+            recommendation: ratingEvent.recommendation_type,
+            comment: ratingEvent.review_text
+          });
+          // Process event:
+          // 1. Deduplicate & save review in Database (facebook_reviews)
+          // 2. Query AI review processor (check sentiment score & brand tone)
+          // 3. If auto-reply is active, trigger POST https://graph.facebook.com/v25.0/{comment_id}/comments
+        }
+      });
+    });
+    return res.status(200).send('EVENT_RECEIVED');
+  }
+
   return res.status(200).send('EVENT_RECEIVED');
 });
 

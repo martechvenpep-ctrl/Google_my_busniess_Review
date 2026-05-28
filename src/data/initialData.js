@@ -10,7 +10,8 @@ export const initialTeam = [
 ];
 
 export const initialIntegrations = [
-  { id: 'google', name: 'Google Business Profile', description: 'Fetch business locations and automatically sync reviews.', status: 'DISCONNECTED', icon: 'Google' }
+  { id: 'google', name: 'Google Business Profile', description: 'Fetch business locations and automatically sync reviews.', status: 'DISCONNECTED', icon: 'Google' },
+  { id: 'facebook', name: 'Facebook Pages', description: 'Fetch Facebook page reviews and automate reply posting.', status: 'DISCONNECTED', icon: 'Facebook' }
 ];
 
 export const initialAutomations = {

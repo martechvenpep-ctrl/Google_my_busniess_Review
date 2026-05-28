@@ -3,12 +3,30 @@ import { AppContext } from '../context/AppContext';
 import Header from '../components/Header';
 import { Boxes, Sparkles, MessageSquare, ShieldAlert, Cpu, Database } from 'lucide-react';
 
+const Facebook = ({ size = 22, style = {} }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="currentColor" 
+    style={style}
+  >
+    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+  </svg>
+);
+
 export default function Integrations() {
   const { 
     integrations, 
     toggleIntegrationStatus, 
     disconnectGoogleProfile,
-    initiateGoogleOAuth
+    initiateGoogleOAuth,
+    facebookPages,
+    facebookSelectedPages,
+    setFacebookSelectedPages,
+    initiateFacebookOAuth,
+    disconnectFacebookProfile
   } = useContext(AppContext);
 
   return (
@@ -26,6 +44,7 @@ export default function Integrations() {
               <div className="card-top-header">
                 <div className={`integration-icon-orb orb-${integration.id}`}>
                   {integration.id === 'google' && <MessageSquare size={22} />}
+                  {integration.id === 'facebook' && <Facebook size={22} />}
                   {integration.id === 'openai' && <Sparkles size={22} />}
                   {integration.id === 'gemini' && <Cpu size={22} />}
                   {integration.id === 'slack' && <ShieldAlert size={22} />}
@@ -83,10 +102,42 @@ export default function Integrations() {
 
                   </div>
                 )}
+
+                {/* --- FACEBOOK PAGES INTEGRATION CARD --- */}
+                {integration.id === 'facebook' && (
+                  <div className="gmb-custom-integration-box">
+                    {!isConnected ? (
+                      <div className="gmb-disconnected-flow">
+                        <p className="gmb-clean-descriptor">
+                          Connect your business Facebook Pages to start automating review replies.
+                        </p>
+                        <div className="google-auth-button-container">
+                          <button className="fb-signin-btn" onClick={initiateFacebookOAuth} style={{ display: 'flex', alignItems: 'center', backgroundColor: '#1877f2', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
+                            <Facebook size={18} style={{ marginRight: '8px', fill: 'white' }} />
+                            <span>Connect Facebook</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="gmb-connected-flow animate-fade-in">
+                        <div className="fb-clean-success-box" style={{ backgroundColor: 'rgba(24, 119, 242, 0.1)', border: '1px solid rgba(24, 119, 242, 0.2)', padding: '12px', borderRadius: '8px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                          <span className="success-g-dot" style={{ color: '#1877f2' }}>●</span>
+                          <span>Autopilot connected. Sync and review automation parameters are active in your Reviews Inbox.</span>
+                        </div>
+                        
+                        <div className="gmb-card-actions-grid">
+                          <button className="gmb-disconnect-now-btn width-full" onClick={disconnectFacebookProfile}>
+                            Disconnect Facebook Account
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Action buttons for OTHER normal integrations */}
-              {integration.id !== 'google' && (
+              {integration.id !== 'google' && integration.id !== 'facebook' && (
                 <div className="card-actions">
                   <button 
                     className={isConnected ? 'disconnect-btn' : 'connect-btn'}
