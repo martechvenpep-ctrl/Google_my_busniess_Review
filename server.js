@@ -110,6 +110,25 @@ app.get('/api/facebook/callback', async (req, res) => {
   }
 });
 
+// Secure diagnostic debug endpoint to verify active environment variables in Railway
+app.get('/api/facebook/debug', (req, res) => {
+  const appId = '825801386910318';
+  const appSecret = process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET || process.env.FB_APP_SECRET || process.env.META_APP_SECRET;
+
+  res.json({
+    app_id: appId,
+    has_secret: !!appSecret,
+    secret_length: appSecret ? appSecret.length : 0,
+    secret_masked: appSecret ? appSecret.substring(0, 4) + '...' + appSecret.substring(appSecret.length - 4) : 'none',
+    env_keys_present: Object.keys(process.env).filter(k => 
+      k.toLowerCase().includes('facebook') || 
+      k.toLowerCase().includes('fb') || 
+      k.toLowerCase().includes('meta')
+    )
+  });
+});
+
+
 
 // Fetch connected Facebook Pages securely via backend proxy (avoids browser CORS issues)
 app.get('/api/facebook/pages', async (req, res) => {
