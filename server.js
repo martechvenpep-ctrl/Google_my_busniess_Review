@@ -206,6 +206,48 @@ app.get('/api/facebook/ratings', async (req, res) => {
   }
 });
 
+// ─── Proxy: Post a reply comment to a Facebook review ────────────────────────
+// Facebook Graph API requires x-www-form-urlencoded and cannot be called from
+// the browser due to CORS restrictions — so we proxy it here on the server.
+app.post('/api/facebook/reply', async (req, res) => {
+  const { reviewId, message, pageAccessToken } = req.body;
+
+  if (!reviewId || !message || !pageAccessToken) {
+    return res.status(400).json({ error: 'Missing reviewId, message, or pageAccessToken' });
+  }
+
+  if (pageAccessToken.startsWith('SANDBOX_TOKEN_') || pageAccessToken === 'MOCK_PAGE_TOKEN') {
+    console.log('[Reply Proxy] Sandbox mode — simulating successful reply.');
+    return res.json({ id: `sandbox_comment_${Date.now()}`, sandbox: true });
+  }
+
+  try {
+    const url = `https://graph.facebook.com/${FB_GRAPH_VER}/${reviewId}/comments`;
+    const body = new URLSearchParams({ message, access_token: pageAccessToken });
+
+    console.log(`[Reply Proxy] Posting reply to review ${reviewId}…`);
+
+    const fbRes  = await fetch(url, {
+      method  : 'POST',
+      headers : { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body    : body.toString()
+    });
+
+    const fbData = await fbRes.json();
+
+    if (!fbRes.ok) {
+      console.error('[Reply Proxy] Facebook API error:', JSON.stringify(fbData));
+      return res.status(fbRes.status).json({ error: 'Facebook API error', details: fbData });
+    }
+
+    console.log('[Reply Proxy] Reply posted successfully:', fbData.id);
+    return res.json(fbData); // { "id": "comment_id" }
+  } catch (err) {
+    console.error('[Reply Proxy] Internal error:', err.message);
+    return res.status(500).json({ error: 'Internal server error posting reply' });
+  }
+});
+
 // ─── Token exchange endpoint (called from frontend) ───────────────────────────
 app.post('/api/facebook-token', async (req, res) => {
   const { code, redirectUri } = req.body;

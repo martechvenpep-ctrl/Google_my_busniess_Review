@@ -283,12 +283,21 @@ export const AppProvider = ({ children }) => {
 
   const mapFbReviewToInternal = (fbRev, pageId, pageName) => {
     const rating = fbRev.recommendation_type === 'positive' ? 5 : 2;
+    // Facebook Graph API returns: fbRev.id, fbRev.reviewer.name, fbRev.reviewer.id
+    const reviewId   = fbRev.id || fbRev.reviewId || ('fb-' + Date.now() + '-' + Math.random());
+    const reviewerId = fbRev.reviewer?.id || '';
+    const authorName = fbRev.reviewer?.name || fbRev.reviewer?.displayName || 'Facebook User';
+    // Build real profile picture URL from reviewer ID if available
+    const avatarUrl  = reviewerId
+      ? `https://graph.facebook.com/${reviewerId}/picture?type=square&width=80&height=80`
+      : null;
+
     return {
-      id: fbRev.reviewId,
-      authorName: fbRev.reviewer ? fbRev.reviewer.displayName : 'Facebook User',
-      avatarUrl: fbRev.reviewer ? fbRev.reviewer.profilePhotoUrl : null,
-      avatarColor: 'hsl(' + (Math.abs((fbRev.reviewId || '').charCodeAt(0) * 15) % 360) + ', 75%, 45%)',
-      rating: rating,
+      id: reviewId,
+      authorName,
+      avatarUrl,
+      avatarColor: 'hsl(' + (Math.abs((reviewId || '').charCodeAt(0) * 15) % 360) + ', 75%, 45%)',
+      rating,
       comment: fbRev.review_text || '(No comment text provided)',
       timestamp: fbRev.created_time || new Date().toISOString(),
       locationId: pageId,
@@ -304,7 +313,9 @@ export const AppProvider = ({ children }) => {
       riskScore: fbRev.recommendation_type === 'positive' ? 5 : 80,
       type: 'Customer Recommendation',
       intent: fbRev.recommendation_type === 'positive' ? 'appreciation' : 'complaint',
-      tags: fbRev.recommendation_type === 'positive' ? ['recommend', 'happy', 'service'] : ['bug', 'reconnect']
+      tags: fbRev.recommendation_type === 'positive' ? ['recommend', 'happy', 'service'] : ['bug', 'reconnect'],
+      // Store page access token on each review so reply can use it
+      pageAccessToken: fbRev._pageAccessToken || ''
     };
   };
 
@@ -334,15 +345,23 @@ export const AppProvider = ({ children }) => {
         const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
-          if (data.data) {
-            allFetchedReviews.push(...data.data.map(rev => mapFbReviewToInternal(rev, pageId, pageTitle)));
+          if (data.data && data.data.length > 0) {
+            // Stamp _pageAccessToken onto each raw review before mapping
+            // so the reply publisher can use the correct page token
+            const stamped = data.data.map(rev => ({ ...rev, _pageAccessToken: targetPage.access_token }));
+            allFetchedReviews.push(...stamped.map(rev => mapFbReviewToInternal(rev, pageId, pageTitle)));
+            addToast(`Loaded ${data.data.length} ratings from "${pageTitle}".`, 'info');
+            continue;
+          } else {
+            addToast(`No ratings found yet for "${pageTitle}".`, 'info');
             continue;
           }
         }
-        throw new Error('Facebook ratings query failed');
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `HTTP ${response.status}`);
       } catch (err) {
-        console.warn(`Real Facebook ratings lookup failed for page ${pageId}. Clearing lists to avoid dummy data.`, err);
-        // Do NOT populate customMockReviews for real/live connections!
+        console.warn(`[FB Sync] Ratings fetch failed for page ${pageId}:`, err.message);
+        addToast(`Could not load ratings for "${pageTitle}": ${err.message}`, 'warning');
       }
     }
 
@@ -814,24 +833,37 @@ export const AppProvider = ({ children }) => {
     if (review.source === 'Facebook Page') {
       addToast('Publishing response to Facebook Page...', 'info');
       try {
-        const targetPage = facebookPages.find(p => p.id === review.locationId) || { access_token: 'MOCK_PAGE_TOKEN' };
-        const url = `https://graph.facebook.com/v25.0/${review.id}/comments`;
-        const response = await fetch(url, {
+        // Get the page access token — prefer stored on review, fallback to facebookPages list
+        const targetPage = (facebookPages || []).find(p => p.id === review.locationId);
+        const pageAccessToken = review.pageAccessToken || targetPage?.access_token || '';
+
+        if (!pageAccessToken || pageAccessToken === 'MOCK_PAGE_TOKEN') {
+          throw new Error('No valid page access token — sync Facebook pages first.');
+        }
+
+        // Route through backend proxy to avoid browser CORS restrictions
+        const proxyRes = await fetch('/api/facebook/reply', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `message=${encodeURIComponent(customReplyText)}&access_token=${targetPage.access_token}`
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reviewId        : review.id,
+            message         : customReplyText,
+            pageAccessToken : pageAccessToken
+          })
         });
 
-        if (response.ok) {
-          addToast('Response successfully commented directly on Facebook Page!', 'success');
-          logAction('Facebook Comment Posted', 'User Operator', `Replied to review comment ID: ${review.id}`);
+        const proxyData = await proxyRes.json();
+
+        if (proxyRes.ok && proxyData.id) {
+          addToast('✅ Response successfully published to Facebook Page!', 'success');
+          logAction('Facebook Reply Published', 'User Operator', `Reply posted to review ID: ${review.id} → comment ID: ${proxyData.id}`);
         } else {
-          throw new Error('Facebook Comment API rejected');
+          throw new Error(proxyData.error || 'Proxy returned non-OK');
         }
       } catch (err) {
-        console.warn('Facebook direct reply unsuccessful. Saving statefully in workspace.', err);
-        addToast('Reply saved statefully in workspace!', 'success');
-        logAction('Facebook Comment Saved Statefully', 'User Operator', `Saved reply for ID: ${review.id} locally`);
+        console.warn('[Facebook Reply] Failed:', err.message);
+        addToast(`Reply saved locally. (${err.message})`, 'warning');
+        logAction('Facebook Reply Saved Locally', 'User Operator', `Saved reply for ID: ${review.id} — reason: ${err.message}`);
       }
     } else {
       addToast('Publishing response to Google My Business...', 'info');
