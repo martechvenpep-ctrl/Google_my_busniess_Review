@@ -89,9 +89,8 @@ export default function ReviewsInbox() {
     }
   }, [googleLocations]);
 
-  // Automatically check the first Facebook page if loaded
   React.useEffect(() => {
-    if (facebookPages.length > 0 && selectedFbPages.length === 0) {
+    if (facebookPages && facebookPages.length > 0 && selectedFbPages.length === 0) {
       setSelectedFbPages([facebookPages[0]?.id]);
     }
   }, [facebookPages]);
@@ -265,7 +264,12 @@ export default function ReviewsInbox() {
               <div className="sidebar-gmb-sync-panel animate-fade-in" style={{ marginTop: '10px' }}>
                 <label className="sidebar-gmb-sublabel">Select Pages to Sync:</label>
                 
-                {facebookPages.length > 0 ? (
+                {facebookPages === null ? (
+                  <div className="sidebar-gmb-loading-box">
+                    <RefreshCw size={12} className="spinner" />
+                    <span>Loading pages...</span>
+                  </div>
+                ) : facebookPages.length > 0 ? (
                   <div className="sidebar-gmb-checkboxes-list">
                     {facebookPages.map(page => {
                       const isChecked = selectedFbPages.includes(page.id);
@@ -281,16 +285,17 @@ export default function ReviewsInbox() {
                             onChange={() => {}} // Row click handles state
                           />
                           <span className="sidebar-loc-title-text" title={page.name}>
-                            {page.name} ({page.category})
+                            {page.name} ({page.category || 'Page'})
                           </span>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <div className="sidebar-gmb-loading-box">
-                    <RefreshCw size={12} className="spinner" />
-                    <span>Loading pages...</span>
+                  <div className="sidebar-gmb-loading-box" style={{ flexDirection: 'column', textAlign: 'center', padding: '15px 10px', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', lineHeight: '1.4', color: 'rgba(255, 255, 255, 0.6)' }}>
+                      No connected pages found. Make sure to configure the <strong>FACEBOOK_CLIENT_SECRET</strong> in your Railway dashboard variables to complete a live connection.
+                    </span>
                   </div>
                 )}
 

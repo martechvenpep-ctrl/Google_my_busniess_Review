@@ -49,7 +49,7 @@ export const AppProvider = ({ children }) => {
   const facebookAppId = '825801386910318';
   const facebookConfigId = '966098999669245';
   const [facebookAccessToken, setFacebookAccessToken] = useState(() => localStorage.getItem('facebook_access_token') || null);
-  const [facebookPages, setFacebookPages] = useState([]);
+  const [facebookPages, setFacebookPages] = useState(null);
   const [facebookSelectedPages, setFacebookSelectedPages] = useState([]);
 
   // Active Review default
