@@ -294,7 +294,7 @@ export default function ReviewsInbox() {
                 ) : (
                   <div className="sidebar-gmb-loading-box" style={{ flexDirection: 'column', textAlign: 'center', padding: '15px 10px', gap: '8px' }}>
                     <span style={{ fontSize: '12px', lineHeight: '1.4', color: 'rgba(255, 255, 255, 0.6)' }}>
-                      No connected pages found. Make sure to configure the <strong>FACEBOOK_CLIENT_SECRET</strong> in your Railway dashboard variables to complete a live connection.
+                      No connected pages found. Make sure your Facebook profile has active Pages, you checked them during Meta OAuth authorization, and <strong>FACEBOOK_CLIENT_SECRET</strong> is set in your Railway dashboard.
                     </span>
                   </div>
                 )}

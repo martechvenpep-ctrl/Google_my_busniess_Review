@@ -65,7 +65,7 @@ app.get('/api/facebook/callback', async (req, res) => {
   const protocol = host.includes('localhost') ? req.protocol : 'https';
   const redirectUri = `${protocol}://${host}/api/facebook/callback`;
   const appId = '825801386910318';
-  const appSecret = process.env.FACEBOOK_CLIENT_SECRET;
+  const appSecret = process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET || process.env.FB_APP_SECRET || process.env.META_APP_SECRET;
 
   if (!code) {
     console.warn('[Meta OAuth] Authorization code is missing.');
@@ -102,13 +102,14 @@ app.get('/api/facebook/callback', async (req, res) => {
     } else {
       const errText = await tokenResponse.text();
       console.error('[Meta OAuth] Code exchange failed:', errText);
-      return res.redirect('/#error=exchange_failed');
+      return res.redirect(`/#error=exchange_failed&details=${encodeURIComponent(errText)}`);
     }
   } catch (err) {
     console.error('[Meta OAuth] Internal error during callback exchange:', err);
-    return res.redirect('/#error=server_error');
+    return res.redirect(`/#error=server_error&details=${encodeURIComponent(err.message)}`);
   }
 });
+
 
 // Fetch connected Facebook Pages securely via backend proxy (avoids browser CORS issues)
 app.get('/api/facebook/pages', async (req, res) => {

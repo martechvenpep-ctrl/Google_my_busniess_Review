@@ -197,7 +197,14 @@ export const AppProvider = ({ children }) => {
     const code = params.get('code');
     const oauthState = params.get('state');
 
-    if (code && oauthState === 'facebook') {
+    // Parse error messages if OAuth failed in callback
+    if (hash && hash.includes('error=')) {
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const errorType = hashParams.get('error');
+      const details = hashParams.get('details') || '';
+      addToast(`Connection failed: ${errorType}. ${decodeURIComponent(details)}`, 'error');
+      window.history.replaceState(null, null, window.location.pathname);
+    } else if (code && oauthState === 'facebook') {
       exchangeFacebookCode(code);
       // Clean URL search query segment
       window.history.replaceState(null, null, window.location.pathname);
