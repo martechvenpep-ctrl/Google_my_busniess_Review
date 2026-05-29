@@ -12,219 +12,256 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Handle Facebook Data Deletion Callback (POST)
-app.post('/api/facebook-data-deletion', (req, res) => {
+// ─── Constants ────────────────────────────────────────────────────────────────
+const FB_APP_ID     = '825801386910318';
+const FB_CONFIG_ID  = '966098999669245';
+const FB_GRAPH_VER  = 'v25.0';
+
+// Read secret from any of the common Railway variable names
+const getFbSecret = () =>
+  process.env.FACEBOOK_CLIENT_SECRET ||
+  process.env.FACEBOOK_APP_SECRET    ||
+  process.env.FB_APP_SECRET          ||
+  process.env.META_APP_SECRET        ||
+  null;
+
+// Build the redirect URI from the incoming request host
+const getRedirectUri = (req) => {
+  const host     = req.get('host') || '';
+  const protocol = host.includes('localhost') ? 'http' : 'https';
+  return `${protocol}://${host}/api/facebook/callback`;
+};
+
+// ─── Health / ping ────────────────────────────────────────────────────────────
+app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+// ─── Debug: show which env vars are present (no secrets exposed) ──────────────
+app.get('/api/facebook/debug', (req, res) => {
+  const secret = getFbSecret();
   res.json({
-    url: 'https://googlemybusniessreview-production.up.railway.app/data-deletion.html',
-    confirmation_code: 'del_' + Math.random().toString(36).substring(2, 15)
+    app_id          : FB_APP_ID,
+    has_secret      : !!secret,
+    secret_length   : secret ? secret.length : 0,
+    secret_preview  : secret ? secret.substring(0, 4) + '...' + secret.slice(-4) : 'NOT SET',
+    redirect_uri    : getRedirectUri(req),
+    env_fb_keys     : Object.keys(process.env).filter(k =>
+      k.toLowerCase().includes('facebook') ||
+      k.toLowerCase().includes('fb_')      ||
+      k.toLowerCase().includes('meta')
+    ),
+    node_env        : process.env.NODE_ENV || 'not set'
   });
 });
 
-// Exchange Facebook Authorization Code for Access Token securely
-app.post('/api/facebook-token', async (req, res) => {
-  const { code, redirectUri } = req.body;
-  const appId = '825801386910318';
-  const appSecret = process.env.FACEBOOK_CLIENT_SECRET;
-
-  if (!appSecret) {
-    return res.status(400).json({ error: 'FACEBOOK_CLIENT_SECRET environment variable is not configured.' });
-  }
-
-  try {
-    const url = `https://graph.facebook.com/v25.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
-    const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      return res.json(data);
-    }
-    const errText = await response.text();
-    return res.status(response.status).json({ error: 'Graph API error', details: errText });
-  } catch (err) {
-    return res.status(500).json({ error: 'Internal server error during exchange' });
-  }
-});
-
-// Secure Backend Route to initiate Meta Login using response_type=code
+// ─── Step 1: Initiate Facebook OAuth (server-side, code flow) ─────────────────
 app.get('/api/facebook/login', (req, res) => {
-  const host = req.get('host');
-  const protocol = host.includes('localhost') ? req.protocol : 'https';
-  const redirectUri = `${protocol}://${host}/api/facebook/callback`;
-  const appId = '825801386910318';
-  const configId = '966098999669245';
-  
-  const loginUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile&config_id=${configId}&response_type=code&state=facebook`;
-  
-  console.log('[Meta OAuth] Redirecting to:', loginUrl);
+  const redirectUri = getRedirectUri(req);
+
+  const params = new URLSearchParams({
+    client_id     : FB_APP_ID,
+    redirect_uri  : redirectUri,
+    scope         : 'pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,public_profile',
+    config_id     : FB_CONFIG_ID,
+    response_type : 'code',
+    state         : 'facebook'
+  });
+
+  const loginUrl = `https://www.facebook.com/${FB_GRAPH_VER}/dialog/oauth?${params.toString()}`;
+  console.log('[Meta OAuth] Initiating login → redirectUri:', redirectUri);
+  console.log('[Meta OAuth] Full login URL:', loginUrl);
   res.redirect(loginUrl);
 });
 
-// Secure Backend Callback Route to handle temporary OAuth authorization code
+// ─── Step 2: Receive auth code and exchange for access token ──────────────────
 app.get('/api/facebook/callback', async (req, res) => {
-  const code = req.query.code;
-  const host = req.get('host');
-  const protocol = host.includes('localhost') ? req.protocol : 'https';
-  const redirectUri = `${protocol}://${host}/api/facebook/callback`;
-  const appId = '825801386910318';
-  const appSecret = process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET || process.env.FB_APP_SECRET || process.env.META_APP_SECRET;
+  const { code, error, error_description, state } = req.query;
+  const redirectUri = getRedirectUri(req);
+  const appSecret   = getFbSecret();
+
+  console.log('[Meta Callback] Received query:', JSON.stringify({ code: code ? '***' : undefined, error, state }));
+
+  // Facebook returned an error (user denied, misconfigured app, etc.)
+  if (error) {
+    const msg = encodeURIComponent(error_description || error || 'unknown_error');
+    console.error('[Meta Callback] Facebook returned error:', error, error_description);
+    return res.redirect(`/#error=${error}&details=${msg}`);
+  }
 
   if (!code) {
-    console.warn('[Meta OAuth] Authorization code is missing.');
+    console.warn('[Meta Callback] No code received.');
     return res.redirect('/#error=missing_code');
   }
 
-  // Sandbox fallback flow if App Secret is not configured in environment variables
+  // If App Secret is missing, activate developer sandbox mode
   if (!appSecret) {
-    console.warn('[Meta OAuth] FACEBOOK_CLIENT_SECRET environment variable is missing. Activating Sandbox flow.');
-    const sandboxToken = 'EAAO825801386910318_SANDBOX_TOKEN_12345';
+    console.warn('[Meta Callback] FACEBOOK_CLIENT_SECRET not set — using sandbox mode.');
+    const sandboxToken = `SANDBOX_TOKEN_${Date.now()}`;
     return res.redirect(`/#access_token=${sandboxToken}&state=facebook`);
   }
 
+  // Exchange authorization code → user access token
   try {
-    const tokenUrl = `https://graph.facebook.com/v25.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
-    const tokenResponse = await fetch(tokenUrl);
-    if (tokenResponse.ok) {
-      const tokenData = await tokenResponse.json();
-      const accessToken = tokenData.access_token;
-      
-      // Query Meta's Graph API to fetch pages securely in the backend
-      try {
-        const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?access_token=${accessToken}`;
-        const pagesResponse = await fetch(pagesUrl);
-        if (pagesResponse.ok) {
-          const pagesData = await pagesResponse.json();
-          console.log(`[Meta OAuth] Successfully connected and retrieved ${pagesData.data?.length || 0} pages securely.`);
-        }
-      } catch (pagesErr) {
-        console.error('[Meta OAuth] Error fetching connected pages inside callback:', pagesErr);
-      }
+    const tokenParams = new URLSearchParams({
+      client_id     : FB_APP_ID,
+      client_secret : appSecret,
+      redirect_uri  : redirectUri,
+      code          : code
+    });
 
-      return res.redirect(`/#access_token=${accessToken}&state=facebook`);
-    } else {
-      const errText = await tokenResponse.text();
-      console.error('[Meta OAuth] Code exchange failed:', errText);
-      return res.redirect(`/#error=exchange_failed&details=${encodeURIComponent(errText)}`);
+    const tokenUrl = `https://graph.facebook.com/${FB_GRAPH_VER}/oauth/access_token?${tokenParams.toString()}`;
+    console.log('[Meta Callback] Exchanging code for token…');
+
+    const tokenRes = await fetch(tokenUrl);
+    const tokenText = await tokenRes.text();
+
+    if (!tokenRes.ok) {
+      console.error('[Meta Callback] Token exchange failed:', tokenText);
+      return res.redirect(`/#error=exchange_failed&details=${encodeURIComponent(tokenText)}`);
     }
+
+    const tokenData = JSON.parse(tokenText);
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) {
+      console.error('[Meta Callback] No access_token in response:', tokenText);
+      return res.redirect(`/#error=no_token&details=${encodeURIComponent(tokenText)}`);
+    }
+
+    console.log('[Meta Callback] Token acquired. Fetching pages…');
+
+    // Optional: log how many pages this token has access to
+    try {
+      const pagesRes  = await fetch(`https://graph.facebook.com/${FB_GRAPH_VER}/me/accounts?access_token=${accessToken}`);
+      const pagesData = await pagesRes.json();
+      console.log(`[Meta Callback] Pages found: ${pagesData?.data?.length ?? 0}`);
+    } catch (e) {
+      console.warn('[Meta Callback] Pages pre-fetch failed (non-fatal):', e.message);
+    }
+
+    // Redirect back to SPA with token in hash
+    return res.redirect(`/#access_token=${accessToken}&state=facebook`);
+
   } catch (err) {
-    console.error('[Meta OAuth] Internal error during callback exchange:', err);
+    console.error('[Meta Callback] Unexpected error:', err.message);
     return res.redirect(`/#error=server_error&details=${encodeURIComponent(err.message)}`);
   }
 });
 
-// Secure diagnostic debug endpoint to verify active environment variables in Railway
-app.get('/api/facebook/debug', (req, res) => {
-  const appId = '825801386910318';
-  const appSecret = process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET || process.env.FB_APP_SECRET || process.env.META_APP_SECRET;
-
-  res.json({
-    app_id: appId,
-    has_secret: !!appSecret,
-    secret_length: appSecret ? appSecret.length : 0,
-    secret_masked: appSecret ? appSecret.substring(0, 4) + '...' + appSecret.substring(appSecret.length - 4) : 'none',
-    env_keys_present: Object.keys(process.env).filter(k => 
-      k.toLowerCase().includes('facebook') || 
-      k.toLowerCase().includes('fb') || 
-      k.toLowerCase().includes('meta')
-    )
-  });
-});
-
-
-
-// Fetch connected Facebook Pages securely via backend proxy (avoids browser CORS issues)
+// ─── Proxy: Fetch connected Facebook Pages (avoids CORS in browser) ───────────
 app.get('/api/facebook/pages', async (req, res) => {
   const { accessToken } = req.query;
+
   if (!accessToken) {
     return res.status(400).json({ error: 'Missing accessToken' });
   }
 
-  // Sandbox fallback if using mock sandbox token
-  if (accessToken.includes('SANDBOX_TOKEN')) {
-    console.log('[Meta Graph API] Loading sandbox pages mock dataset (Cleaned).');
-    return res.json({ data: [] });
+  // Sandbox mode
+  if (accessToken.startsWith('SANDBOX_TOKEN_')) {
+    return res.json({ data: [], sandbox: true });
   }
 
   try {
-    const url = `https://graph.facebook.com/v25.0/me/accounts?access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/${FB_GRAPH_VER}/me/accounts?access_token=${accessToken}`;
     const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      return res.json(data);
+    const data     = await response.json();
+
+    if (!response.ok) {
+      console.error('[Pages API] Graph error:', JSON.stringify(data));
+      return res.status(response.status).json({ error: 'Graph API error', details: data });
     }
-    const errText = await response.text();
-    return res.status(response.status).json({ error: 'Graph API error', details: errText });
+
+    return res.json(data);
   } catch (err) {
+    console.error('[Pages API] Internal error:', err.message);
     return res.status(500).json({ error: 'Internal server error fetching pages' });
   }
 });
 
-// Fetch Facebook Page Ratings/Reviews securely via backend proxy (avoids browser CORS issues)
+// ─── Proxy: Fetch Facebook Page Ratings/Reviews ───────────────────────────────
 app.get('/api/facebook/ratings', async (req, res) => {
   const { pageId, accessToken } = req.query;
+
   if (!pageId || !accessToken) {
     return res.status(400).json({ error: 'Missing pageId or accessToken' });
   }
 
-  // Sandbox fallback if using mock sandbox token
-  if (accessToken.includes('SANDBOX_TOKEN')) {
-    console.log('[Meta Graph API] Loading sandbox ratings mock dataset (Cleaned).');
-    return res.json({ data: [] });
+  if (accessToken.startsWith('SANDBOX_TOKEN_')) {
+    return res.json({ data: [], sandbox: true });
   }
 
   try {
-    const url = `https://graph.facebook.com/v25.0/${pageId}/ratings?fields=review_text,recommendation_type,created_time,reviewer,open_graph_story&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/${FB_GRAPH_VER}/${pageId}/ratings?fields=review_text,recommendation_type,created_time,reviewer,open_graph_story&access_token=${accessToken}`;
     const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      return res.json(data);
+    const data     = await response.json();
+
+    if (!response.ok) {
+      console.error('[Ratings API] Graph error:', JSON.stringify(data));
+      return res.status(response.status).json({ error: 'Graph API error', details: data });
     }
-    const errText = await response.text();
-    return res.status(response.status).json({ error: 'Graph API error', details: errText });
+
+    return res.json(data);
   } catch (err) {
+    console.error('[Ratings API] Internal error:', err.message);
     return res.status(500).json({ error: 'Internal server error fetching ratings' });
   }
 });
 
+// ─── Token exchange endpoint (called from frontend) ───────────────────────────
+app.post('/api/facebook-token', async (req, res) => {
+  const { code, redirectUri } = req.body;
+  const appSecret = getFbSecret();
 
+  if (!appSecret) {
+    return res.status(400).json({ error: 'FACEBOOK_CLIENT_SECRET is not configured on the server.' });
+  }
 
-// Facebook Webhook Verification (GET) and Event Receiver (POST)
+  try {
+    const params = new URLSearchParams({
+      client_id     : FB_APP_ID,
+      client_secret : appSecret,
+      redirect_uri  : redirectUri,
+      code          : code
+    });
+
+    const url      = `https://graph.facebook.com/${FB_GRAPH_VER}/oauth/access_token?${params.toString()}`;
+    const response = await fetch(url);
+
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+
+    const errText = await response.text();
+    return res.status(response.status).json({ error: 'Graph API error', details: errText });
+  } catch (err) {
+    return res.status(500).json({ error: 'Internal server error during token exchange' });
+  }
+});
+
+// ─── Facebook Webhook ─────────────────────────────────────────────────────────
+const WEBHOOK_VERIFY_TOKEN = 'my_facebook_webhook_verify_token_12345';
+
 app.get('/api/facebook-webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  const VERIFY_TOKEN = 'my_facebook_webhook_verify_token_12345';
-
-  if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('WEBHOOK_VERIFIED');
-      return res.status(200).send(challenge);
-    } else {
-      return res.sendStatus(403);
-    }
+  if (mode === 'subscribe' && token === WEBHOOK_VERIFY_TOKEN) {
+    console.log('[Webhook] Verified successfully.');
+    return res.status(200).send(challenge);
   }
-  return res.sendStatus(400);
+  return res.sendStatus(403);
 });
 
 app.post('/api/facebook-webhook', (req, res) => {
   const body = req.body;
-  console.log('Received Webhook Event:', JSON.stringify(body, null, 2));
+  console.log('[Webhook] Event received:', JSON.stringify(body, null, 2));
 
-  // Process Facebook Page Webhook payload (subscription to the 'ratings' field)
   if (body.object === 'page') {
     body.entry?.forEach(entry => {
-      const pageId = entry.id;
-      entry.changes?.forEach((change) => {
+      entry.changes?.forEach(change => {
         if (change.field === 'ratings') {
-          const ratingEvent = change.value;
-          console.log(`[Meta Webhook] New page rating received for page ${pageId}:`, {
-            reviewer: ratingEvent.reviewer_name || 'Facebook User',
-            recommendation: ratingEvent.recommendation_type,
-            comment: ratingEvent.review_text
-          });
-          // Process event:
-          // 1. Deduplicate & save review in Database (facebook_reviews)
-          // 2. Query AI review processor (check sentiment score & brand tone)
-          // 3. If auto-reply is active, trigger POST https://graph.facebook.com/v25.0/{comment_id}/comments
+          console.log(`[Webhook] New rating for page ${entry.id}:`, change.value);
         }
       });
     });
@@ -234,14 +271,26 @@ app.post('/api/facebook-webhook', (req, res) => {
   return res.status(200).send('EVENT_RECEIVED');
 });
 
-// Serve static assets from dist
+// ─── Facebook Data Deletion Callback ─────────────────────────────────────────
+app.post('/api/facebook-data-deletion', (_req, res) => {
+  res.json({
+    url               : 'https://googlemybusniessreview-production.up.railway.app/data-deletion.html',
+    confirmation_code : 'del_' + Math.random().toString(36).substring(2, 15)
+  });
+});
+
+// ─── Serve Vite SPA ───────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Fallback all GET requests to index.html for React SPA
-app.get(/.*/, (req, res) => {
+app.get(/.*/, (_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
+// ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  const secret = getFbSecret();
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🔑 Facebook App ID  : ${FB_APP_ID}`);
+  console.log(`🔐 FB Secret loaded : ${secret ? 'YES (' + secret.length + ' chars)' : '❌ NOT SET — set FACEBOOK_CLIENT_SECRET in Railway!'}`);
+  console.log(`🌍 NODE_ENV         : ${process.env.NODE_ENV || 'development'}`);
 });
