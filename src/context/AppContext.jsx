@@ -285,8 +285,8 @@ export const AppProvider = ({ children }) => {
     const rating = fbRev.recommendation_type === 'positive' ? 5 : 2;
     // Facebook Graph API ratings endpoint requires open_graph_story.id for replying to comments
     const reviewId   = fbRev.open_graph_story?.id || fbRev.id || fbRev.reviewId || ('fb-' + Date.now() + '-' + Math.random());
-    const reviewerId = fbRev.reviewer?.id || '';
-    const authorName = fbRev.reviewer?.name || fbRev.reviewer?.displayName || 'Facebook User';
+    const reviewerId = fbRev.reviewer?.id || fbRev.from?.id || fbRev.open_graph_story?.from?.id || '';
+    const authorName = fbRev.reviewer?.name || fbRev.reviewer?.displayName || fbRev.from?.name || fbRev.open_graph_story?.from?.name || 'Facebook User';
     // Build real profile picture URL from reviewer ID if available
     const avatarUrl  = reviewerId
       ? `https://graph.facebook.com/${reviewerId}/picture?type=square&width=80&height=80`

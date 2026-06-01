@@ -190,7 +190,7 @@ app.get('/api/facebook/ratings', async (req, res) => {
   }
 
   try {
-    const url = `https://graph.facebook.com/${FB_GRAPH_VER}/${pageId}/ratings?fields=review_text,recommendation_type,created_time,reviewer,open_graph_story&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/${FB_GRAPH_VER}/${pageId}/ratings?fields=review_text,recommendation_type,created_time,reviewer,from,open_graph_story{from}&access_token=${accessToken}`;
     const response = await fetch(url);
     const data     = await response.json();
 
