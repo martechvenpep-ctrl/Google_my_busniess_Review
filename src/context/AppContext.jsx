@@ -283,8 +283,8 @@ export const AppProvider = ({ children }) => {
 
   const mapFbReviewToInternal = (fbRev, pageId, pageName) => {
     const rating = fbRev.recommendation_type === 'positive' ? 5 : 2;
-    // Facebook Graph API returns: fbRev.id, fbRev.reviewer.name, fbRev.reviewer.id
-    const reviewId   = fbRev.id || fbRev.reviewId || ('fb-' + Date.now() + '-' + Math.random());
+    // Facebook Graph API ratings endpoint requires open_graph_story.id for replying to comments
+    const reviewId   = fbRev.open_graph_story?.id || fbRev.id || fbRev.reviewId || ('fb-' + Date.now() + '-' + Math.random());
     const reviewerId = fbRev.reviewer?.id || '';
     const authorName = fbRev.reviewer?.name || fbRev.reviewer?.displayName || 'Facebook User';
     // Build real profile picture URL from reviewer ID if available
